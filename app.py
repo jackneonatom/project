@@ -179,11 +179,11 @@ async def turn_on_components():
 
     # to use last entry in database
     last = len(data) - 1
-    if data:
+    if last < len(data):
      sensor_data = data[last]
     else:
-  # Handle the case where there's no data (e.g., return an empty response)
-     pass
+    # Handle the case where the index is out of range, maybe return an error or handle it gracefully.
+     sensor_data = None 
 
     settings = await db["settings"].find().to_list(999)
     
