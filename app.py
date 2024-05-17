@@ -73,6 +73,7 @@ def get_sunset_time():
     user_sunset = datetime.strptime(sunset, '%I:%M:%S %p')
 
     return user_sunset.strftime('%H:%M:%S')
+#  the
 
 # put request
 @app.put("/settings", status_code=200)
