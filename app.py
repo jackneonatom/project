@@ -297,10 +297,3 @@ async def get_data(size: int = None):
     data = await db["sensorData"].find().to_list(size)
     return TypeAdapter(List[sensorData]).validate_python(data)
 
-# to post fake data to test get
-@app.post("/graph", status_code=201)
-async def create_data(sensorData: graphData):
-    new_entry = await db["sensorData"].insert_one(sensorData.model_dump())
-    created_entry = await db["sensorData"].find_one({"_id": new_entry.inserted_id})
-
-    return graphData(**created_entry)
