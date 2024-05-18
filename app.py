@@ -36,6 +36,12 @@ app.add_middleware(
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
+class sensorData(BaseModel):
+    id: Optional[PyObjectId]=Field(alias='_id', default = None)
+    temperature: Optional[float] = None
+    presence: Optional[bool] = None
+    datetime: Optional[str] = None
+  
 # class to accept JSON
 class Settings(BaseModel):
     id: Optional[PyObjectId] = Field(alias = "_id", default = None)
@@ -43,9 +49,10 @@ class Settings(BaseModel):
     user_light: Optional[str] = None
     light_duration: Optional[str] = None
     light_time_off: Optional[str] = None
+    
 
 # class to return JSON
-class returnSettings(BaseModel):
+class newSettings(BaseModel):
     id: Optional[PyObjectId] = Field(alias = "_id", default = None)
     user_temp: Optional[float] = None
     user_light: Optional[str] = None
@@ -64,16 +71,26 @@ def parse_time(time_str):
     return timedelta(**time_params)
 
 # get the sunset time in JAMAICA for that day
-def get_sunset_time():
+def army_time(time):
     URL = "https://api.sunrisesunset.io/json?lat=17.97787&lng=-76.77339" # this is for JAMAICA
     country_data = requests.get(url=URL).json()
     sunset = country_data["results"]["sunset"]
 
     # convert to 24 hr format
-    user_sunset = datetime.strptime(sunset, '%I:%M:%S %p')
+    your_sunset = datetime.strptime(time, '%I:%M:%S %p')
 
-    return user_sunset.strftime('%H:%M:%S')
+    return your_sunset.strftime('%H:%M:%S')
 #  the
+
+
+def sunset_calculation():
+    URL = "https://api.sunrisesunset.io/json"
+    PARAMS = {"lat":"17.97787", "lng": "-76.77339"}
+    r = requests.get(url=URL, params=PARAMS)
+    response = r.json()
+    sunset_time = response["results"]["sunset"]
+    sunset_24 = army_time(sunset_time)
+    return sunset_24
 
 # put request
 @app.put("/settings", status_code=200)
@@ -82,32 +99,30 @@ async def create_setting(settings: Settings):
 
     # determine whether user_light time is 'sunset' or given
     if settings.user_light == "sunset":
-        user_light = datetime.strptime(get_sunset_time(), "%H:%M:%S")
+        user_light = datetime.strptime(sunset_calculation(), "%H:%M:%S")
     else:
         user_light = datetime.strptime(settings.user_light, "%H:%M:%S")
     
     # populate light time off
     duration = parse_time(settings.light_duration)
     settings.light_time_off = (user_light + duration).strftime("%H:%M:%S")
-
+    all_settings = await db["settings"].find().to_list(999)
     # create setting if none
-    if len(settings_check) == 0:        
-        settings_info = settings.model_dump(exclude=["light_duration"])
-        new_setting = await db["settings"].insert_one(settings_info)
+    if len(settings_check) == 1:        
+        db["settings"].update_one({"_id":all_settings[0]["_id"]},{"$set":settings.model_dump(exclude = ["light_duration"])})
+        new_setting = await db["settings"].find_one({"_id": all_settings[0]["_id"]})
         created_setting = await db["settings"].find_one({"_id": new_setting.inserted_id})
 
-        return JSONResponse(status_code=201, content=returnSettings(**created_setting).model_dump())
+        return newSettings(**new_setting)
 
     # update setting if entry exists
     else:            
-        db["settings"].update_one(
-            {"_id": settings_check[0]["_id"]},
-            {"$set": settings.model_dump(exclude=["light_duration"])}
-        )
+        newer_settings = await db["settings"].insert_one(settings.model_dump(exclude = ["light_duration"]))
+        created_settings = await db["settings"].find_one({"_id": newer_settings.inserted_id})
+        final = (newSettings(**created_settings)).model_dump()
+        # raise HTTPException(status_code=201)
 
-        created_setting = await db["settings"].find_one({"_id": settings_check[0]["_id"]})
-
-        return returnSettings(**created_setting)
+        return JSONResponse(status_code=201, content=final)
 
 # class for graph data collected from ESP
 class graphData(BaseModel):
@@ -237,6 +252,53 @@ async def turn_on_components():
     }
     return return_sensor_data
 # get request to collect environmental data from ESP
+@app.get("/fan", status_code=200)
+async def fan_control():
+    data = await db["sensorData"].find().to_list(999)
+    num = len(data) - 1
+    sensors = data[num]
+
+    all_settings = await db["settings"].find().to_list(999)
+    user_pref = all_settings[0]
+
+    if (sensors["presence"] == True):
+
+        if (sensors["temperature"] >= user_pref["user_temp"]):
+            fanState = True
+        # else, turn it off
+        else:
+            fanState = False
+    else:
+        fanState = False
+    
+    componentState = {
+        "fan": fanState
+    }
+
+    return componentState
+
+@app.get("/light", status_code=200)
+async def light_control():
+    data = await db["sensorData"].find().to_list(999)
+    num = len(data) - 1
+    sensors = data[num]
+
+    all_settings = await db["settings"].find().to_list(999)
+    user_pref = all_settings[0]
+
+    if (sensors["presence"] == True):
+
+        if (sensors["temperature"] >= user_pref["user_temp"]):
+            lightState = True
+        # else, turn it off
+        else:
+            lightState = False
+    
+    componentState = {
+        "light": lightState
+    }
+
+    return componentState
 @app.get("/graph")
 async def get_data(size: int = None):
     data = await db["data"].find().to_list(size)
