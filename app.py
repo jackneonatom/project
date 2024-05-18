@@ -219,8 +219,8 @@ async def turn_on_components():
             lightState =  True
     
         else:
-            on_check = await db["data"].find_one({"datetime": user_setting["user_light"]})
-            off_check = await db["data"].find_one({"datetime": user_setting["light_time_off"]})
+            on_check = await db["sensorData"].find_one({"datetime": user_setting["user_light"]})
+            off_check = await db["sensorData"].find_one({"datetime": user_setting["light_time_off"]})
             
             # if current time is equal to the slated turn off time, turn off light
             if (user_setting["light_time_off"] == sensor_data["datetime"]):
@@ -254,9 +254,9 @@ async def turn_on_components():
 # get request to collect environmental data from ESP
 @app.get("/fan", status_code=200)
 async def fan_control():
-    data = await db["sensorData"].find().to_list(999)
-    num = len(data) - 1
-    sensors = data[num]
+    sensorData = await db["sensorData"].find().to_list(999)
+    num = len(sensorData) - 1
+    sensors = sensorData[num]
 
     all_settings = await db["settings"].find().to_list(999)
     user_pref = all_settings[0]
@@ -279,9 +279,9 @@ async def fan_control():
 
 @app.get("/light", status_code=200)
 async def light_control():
-    data = await db["sensorData"].find().to_list(999)
-    num = len(data) - 1
-    sensors = data[num]
+    sensorData = await db["sensorData"].find().to_list(999)
+    num = len(sensorData) - 1
+    sensors = sensorData[num]
 
     all_settings = await db["settings"].find().to_list(999)
     user_pref = all_settings[0]
@@ -301,13 +301,13 @@ async def light_control():
     return componentState
 @app.get("/graph")
 async def get_data(size: int = None):
-    data = await db["data"].find().to_list(size)
-    return TypeAdapter(List[graphData]).validate_python(data)
+    sensorData = await db["sensorData"].find().to_list(size)
+    return TypeAdapter(List[graphData]).validate_python(sensorData)
 
 # to post fake data to test get
 @app.post("/graph", status_code=201)
-async def create_data(data: graphData):
-    new_entry = await db["data"].insert_one(data.model_dump())
-    created_entry = await db["data"].find_one({"_id": new_entry.inserted_id})
+async def create_data(sensorData: graphData):
+    new_entry = await db["sensorData"].insert_one(sensorData.model_dump())
+    created_entry = await db["sensorData"].find_one({"_id": new_entry.inserted_id})
 
     return graphData(**created_entry)
